@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+import { Button } from "../../components/ui/button";
 import Link from "next/link";
 
 export default function Navbar() {
@@ -8,7 +8,10 @@ export default function Navbar() {
         {/*//logo */}
         <div className="flex items-center gap-2">
           <span className="text-xl font-semibold tracking-tight text-zinc-900">
+            <Link href="/">
             Job<span className="text-primary">Portal</span>
+            </Link>
+  
           </span>
         </div>
 
