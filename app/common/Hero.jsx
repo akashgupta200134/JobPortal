@@ -21,13 +21,15 @@ export default function HeroSection() {
 
           {/* CTA Buttons */}
           <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:gap-6">
-            <Link href="/signup">
+            {/* Candidate / Job Seeker Signup */}
+            <Link href="/signup/jobseeker">
               <Button size="lg" className="px-8">
                 Apply for Jobs
               </Button>
             </Link>
 
-            <Link href="/signup">
+            {/* Recruiter Signup */}
+            <Link href="/signup/recruiter">
               <Button
                 size="lg"
                 variant="outline"
