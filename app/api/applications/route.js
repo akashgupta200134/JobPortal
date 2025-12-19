@@ -4,7 +4,14 @@ import Job from "@/models/Job";
 import jwt from "jsonwebtoken";
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
-import fs from "fs";
+import { v2 as cloudinary } from "cloudinary";
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 export const dynamic = 'force-dynamic';
 
@@ -42,19 +49,34 @@ export async function POST(req) {
     
     if (alreadyApplied) return NextResponse.json({ success: false, message: "Already applied" }, { status: 409 });
 
-    // Handle File Upload
+    // --- CLOUDINARY UPLOAD LOGIC ---
     const resumeFile = formData.get("resumeFile");
     let resumeUrl = "";
+
     if (resumeFile && typeof resumeFile !== 'string' && resumeFile.size > 0) {
-      const uploadDir = "./public/uploads";
-      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-      const fileName = `${Date.now()}-${resumeFile.name}`;
-      const filePath = `${uploadDir}/${fileName}`;
-      fs.writeFileSync(filePath, Buffer.from(await resumeFile.arrayBuffer()));
-      resumeUrl = `/uploads/${fileName}`;
+      // 1. Convert File to Buffer
+      const arrayBuffer = await resumeFile.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      // 2. Upload to Cloudinary using a Promise
+      const uploadResponse = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          { 
+            resource_type: "auto", // Automatically detects PDF/DOCX
+            folder: "resumes"      // Optional: creates a folder in Cloudinary
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        ).end(buffer);
+      });
+
+      // 3. Get the Secure URL from Cloudinary
+      resumeUrl = uploadResponse.secure_url;
     }
 
-    // Create Application with all fields from your Schema
+    // Create Application with Cloudinary URL
     const application = await Application.create({
       jobId: new mongoose.Types.ObjectId(jobId),
       candidateId: new mongoose.Types.ObjectId(decoded.userId),
@@ -64,12 +86,12 @@ export async function POST(req) {
       location: formData.get("location"),
       skills: formData.get("skills"),
       videoProfileUrl: formData.get("videoProfileUrl"),
-      resumeUrl: resumeUrl,
+      resumeUrl: resumeUrl, // This is now a https://res.cloudinary.com/... link
     });
 
     return NextResponse.json({ success: true, application }, { status: 201 });
   } catch (err) {
-    console.error("POST Error:", err);
+    console.error("Cloudinary POST Error:", err);
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }
