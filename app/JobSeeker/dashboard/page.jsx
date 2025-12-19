@@ -3,21 +3,20 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Briefcase, MapPin, Clock, DollarSign } from "lucide-react";
+import { useAuth } from "@/app/context/AuthContext"; // Use the context we fixed
 
 export default function CandidateDashboard() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth(); // Get auth state
   const [jobs, setJobs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [jobsLoading, setJobsLoading] = useState(true);
 
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    if (!user || user.role !== "candidate") {
-      alert("Please login as a candidate");
-      router.push("/login");
-      return;
+    // Only fetch jobs if the auth check is finished and we have a valid candidate
+    if (!authLoading && user?.role === "candidate") {
+      fetchJobs();
     }
-    fetchJobs();
-  }, []);
+  }, [user, authLoading]);
 
   const fetchJobs = async () => {
     try {
@@ -31,7 +30,7 @@ export default function CandidateDashboard() {
     } catch (error) {
       console.error("Error fetching jobs:", error);
     } finally {
-      setLoading(false);
+      setJobsLoading(false);
     }
   };
 
@@ -39,22 +38,30 @@ export default function CandidateDashboard() {
     router.push(`/JobSeeker/jobs/${jobId}/apply`);
   };
 
-  if (loading) {
+  // 1. Show global loader while checking if user is logged in
+  if (authLoading || (jobsLoading && jobs.length === 0)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading jobs...</p>
+          <p className="text-gray-600">Loading your opportunities...</p>
         </div>
       </div>
     );
+  }
+
+  // 2. If Auth is done and no user, return null (Middleware will redirect)
+  if (!user || user.role !== "candidate") {
+    return null;
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto p-6">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight">Available Jobs</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+            Welcome back, {user.name}!
+          </h1>
           <p className="text-gray-600 mt-1">
             Find your next opportunity from {jobs.length} open positions
           </p>

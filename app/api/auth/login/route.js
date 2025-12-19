@@ -6,42 +6,47 @@ import jwt from "jsonwebtoken";
 export async function POST(req) {
   try {
     await connectDB();
-
     const { phone, role } = await req.json();
-    const normalizedPhone = phone.replace(/\D/g, "");
 
+    if (!phone || !role) {
+      return NextResponse.json({ success: false, message: "Missing phone or role" }, { status: 400 });
+    }
+
+    const normalizedPhone = phone.replace(/\D/g, "");
     let user = await User.findOne({ phone: normalizedPhone });
 
     if (user && user.role !== role) {
       return NextResponse.json(
-        { success: false, message: "Role mismatch. Login with correct role." },
+        { success: false, message: `Account exists as a ${user.role}. Please login with the correct role.` },
         { status: 403 }
       );
     }
 
     if (!user) {
-      user = await User.create({
-        phone: normalizedPhone,
-        role,
-      });
+      user = await User.create({ phone: normalizedPhone, role });
     }
 
     const token = jwt.sign(
-      {
-        userId: user._id,
-        role: user.role,
-      },
+      { userId: user._id, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
+    // ✅ FIX: Determine display name based on role and DB data
+    let displayName = "New User";
+    if (user.role === "recruiter") {
+      displayName = user.recruiterName || "Recruiter";
+    } else {
+      displayName = user.fullName || "User";
+    }
+
     const response = NextResponse.json({
       success: true,
       user: {
-        _id: user._id.toString(),
         id: user._id.toString(),
         role: user.role,
         phone: user.phone,
+        name: displayName, 
       },
     });
 
@@ -56,9 +61,6 @@ export async function POST(req) {
     return response;
   } catch (err) {
     console.error("Login error:", err);
-    return NextResponse.json(
-      { success: false, message: "Server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, message: "Server error" }, { status: 500 });
   }
 }

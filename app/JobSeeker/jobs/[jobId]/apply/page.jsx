@@ -2,16 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, MapPin, DollarSign } from "lucide-react";
+import { ArrowLeft, MapPin, DollarSign, Video, FileText, User, Mail, Phone, Briefcase, Globe } from "lucide-react";
+import { useAuth } from "@/app/context/AuthContext";
 
 export default function ApplyJobPage() {
   const router = useRouter();
   const params = useParams();
   const jobId = params.jobId;
+  const { user, loading: authLoading, login } = useAuth(); 
 
   const [job, setJob] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [fetchingJob, setFetchingJob] = useState(true);
   const [applying, setApplying] = useState(false);
+  
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -22,16 +25,16 @@ export default function ApplyJobPage() {
     resumeFile: null,
   });
 
-  // Check candidate login and fetch job details
+  // 1. Unified Auth & Job Fetching
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    if (!user || user.role !== "candidate") {
-      alert("Please login as a candidate");
-      router.push("/login");
-      return;
+    if (!authLoading) {
+      if (!user || user.role !== "candidate") {
+        router.push("/login");
+        return;
+      }
+      fetchJobDetails();
     }
-    fetchJobDetails();
-  }, [jobId]);
+  }, [authLoading, user, jobId]);
 
   const fetchJobDetails = async () => {
     try {
@@ -44,24 +47,20 @@ export default function ApplyJobPage() {
           alert("Job not found");
           router.push("/JobSeeker/dashboard");
         }
-      } else {
-        alert("Failed to load jobs");
       }
     } catch (err) {
-      console.error(err);
-      alert("Error fetching job details");
+      console.error("Fetch error:", err);
     } finally {
-      setLoading(false);
+      setFetchingJob(false);
     }
   };
 
   const handleChange = (e) => {
     const { id, value, files } = e.target;
-    if (files) {
-      setFormData({ ...formData, [id]: files[0] });
-    } else {
-      setFormData({ ...formData, [id]: value });
-    }
+    setFormData((prev) => ({ 
+      ...prev, 
+      [id]: files ? files[0] : value 
+    }));
   };
 
   const handleSubmit = async (e) => {
@@ -69,12 +68,14 @@ export default function ApplyJobPage() {
     setApplying(true);
 
     try {
+      // Step A: Prepare Application Payload
       const formPayload = new FormData();
       formPayload.append("jobId", jobId);
       Object.keys(formData).forEach((key) => {
         if (formData[key]) formPayload.append(key, formData[key]);
       });
 
+      // Step B: Submit the Job Application
       const response = await fetch("/api/applications", {
         method: "POST",
         body: formPayload,
@@ -84,141 +85,116 @@ export default function ApplyJobPage() {
       const data = await response.json();
 
       if (data.success) {
+        // ✅ Step C: THE PERMANENT FIX
+        // If the user is currently "New User", we update their DB record permanently
+        if (user?.name === "New User" || !user?.name) {
+          try {
+            await fetch("/api/user/update-profile", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ 
+                userId: user.id, 
+                fullName: formData.fullName 
+              }),
+            });
+
+            // ✅ Step D: Update Navbar/Context immediately
+            login({ ...user, name: formData.fullName });
+          } catch (profileErr) {
+            console.error("Profile update failed:", profileErr);
+          }
+        }
+
         alert("Application submitted successfully!");
         router.push("/JobSeeker/dashboard");
       } else {
         alert(data.message || "Failed to apply");
       }
     } catch (err) {
-      console.error("Apply error:", err);
-      alert("An error occurred. Please try again.");
+      alert("An error occurred: " + err.message);
     } finally {
       setApplying(false);
     }
   };
 
-  if (loading) {
+  if (authLoading || fetchingJob) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading job details...</p>
-        </div>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-white">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mb-4"></div>
+        <p className="text-gray-500 font-medium">Loading your application...</p>
       </div>
     );
   }
 
-  if (!job) return null;
-
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pb-12">
       <div className="max-w-4xl mx-auto p-6">
-        <button
-          onClick={() => router.push("/JobSeeker/dashboard")}
-          className="flex items-center gap-2 text-gray-600 hover:text-black mb-6 transition"
+        <button 
+          onClick={() => router.push("/JobSeeker/dashboard")} 
+          className="flex items-center gap-2 mb-8 text-gray-600 hover:text-black transition group"
         >
-          <ArrowLeft className="w-5 h-5" />
-          Back to Jobs
+          <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+          <span className="font-medium">Back to Jobs</span>
         </button>
 
-        {/* Job Details */}
-        <div className="bg-white rounded-2xl border shadow-sm p-8 mb-6">
-          <div className="flex items-start gap-4 mb-6">
-            <div className="w-16 h-16 bg-black rounded-xl flex items-center justify-center text-white font-bold text-2xl">
-              {job.postedBy?.companyName?.[0]?.toUpperCase() || "C"}
-            </div>
-            <div className="flex-1">
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">{job.title}</h1>
-              <p className="text-xl text-gray-600 mb-4">{job.postedBy?.companyName || "Company"}</p>
-              <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-                {job.location && (
-                  <div className="flex items-center gap-1">
-                    <MapPin className="w-4 h-4" />
-                    <span>{job.location}</span>
-                  </div>
-                )}
-                {job.salaryRange && (
-                  <div className="flex items-center gap-1">
-                    <DollarSign className="w-4 h-4" />
-                    <span>{job.salaryRange}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {job.description && (
-            <div className="border-t pt-6 mb-6">
-              <h2 className="text-xl font-semibold mb-3">Job Description</h2>
-              <p className="text-gray-700 whitespace-pre-wrap">{job.description}</p>
-            </div>
-          )}
-
-          {job.skills?.length > 0 && (
-            <div className="border-t pt-6">
-              <h2 className="text-xl font-semibold mb-3">Required Skills</h2>
-              <div className="flex flex-wrap gap-2">
-                {job.skills.map((skill, idx) => (
-                  <span
-                    key={idx}
-                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-full text-sm font-medium"
-                  >
-                    {skill}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
+        {/* Job Card Header */}
+        <div className="bg-white rounded-3xl border border-gray-200 p-8 mb-8 shadow-sm">
+           <h1 className="text-3xl font-bold text-gray-900 mb-2">{job?.title}</h1>
+           <div className="flex flex-wrap gap-5 text-gray-600">
+              <span className="flex items-center gap-1.5"><Briefcase className="w-4 h-4" /> {job?.postedBy?.companyName}</span>
+              <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4" /> {job?.location}</span>
+              {job?.salaryRange && (
+                <span className="flex items-center gap-1.5 text-green-700 font-bold">
+                  <DollarSign className="w-4 h-4" /> {job?.salaryRange}
+                </span>
+              )}
+           </div>
         </div>
 
-        {/* Apply Form */}
-        <div className="bg-white rounded-2xl border shadow-sm p-8">
-          <h2 className="text-2xl font-bold mb-6">Apply for this Position</h2>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {[
-              { id: "fullName", label: "Full Name", type: "text", placeholder: "Akash Gupta" },
-              { id: "email", label: "Email", type: "email", placeholder: "akash@gmail.com" },
-              { id: "phoneNumber", label: "Phone Number", type: "tel", placeholder: "+919876543210" },
-              { id: "location", label: "Location", type: "text", placeholder: "Mumbai" },
-              { id: "skills", label: "Skills", type: "text", placeholder: "Reactjs, Nextjs" },
-              { id: "videoProfileUrl", label: "Video Profile URL", type: "url", placeholder: "https://example.com/video.mp4" },
-            ].map((field) => (
-              <div key={field.id}>
-                <label htmlFor={field.id} className="block text-sm font-medium text-gray-700 mb-2">
-                  {field.label} <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id={field.id}
-                  type={field.type}
-                  placeholder={field.placeholder}
-                  value={formData[field.id]}
-                  onChange={handleChange}
-                  className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black transition"
-                  required
-                />
+        {/* Form */}
+        <div className="bg-white rounded-3xl border border-gray-200 overflow-hidden shadow-sm">
+          <form onSubmit={handleSubmit} className="p-8 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-1">
+                <label className="flex items-center gap-2 text-sm font-bold text-gray-700"><User className="w-4 h-4"/> Full Name *</label>
+                <input id="fullName" type="text" value={formData.fullName} onChange={handleChange} required className="w-full border p-4 rounded-2xl outline-none focus:ring-2 focus:ring-black" placeholder="John Doe" />
               </div>
-            ))}
-
-            {/* Resume Upload */}
-            <div>
-              <label htmlFor="resumeFile" className="block text-sm font-medium text-gray-700 mb-2">
-                Resume <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="resumeFile"
-                type="file"
-                accept=".pdf,.doc,.docx"
-                onChange={handleChange}
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black transition"
-                required
-              />
+              <div className="space-y-1">
+                <label className="flex items-center gap-2 text-sm font-bold text-gray-700"><Mail className="w-4 h-4"/> Email Address *</label>
+                <input id="email" type="email" value={formData.email} onChange={handleChange} required className="w-full border p-4 rounded-2xl outline-none focus:ring-2 focus:ring-black" placeholder="john@example.com" />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-1">
+                <label className="flex items-center gap-2 text-sm font-bold text-gray-700"><Phone className="w-4 h-4"/> Phone Number *</label>
+                <input id="phoneNumber" type="tel" value={formData.phoneNumber} onChange={handleChange} required className="w-full border p-4 rounded-2xl outline-none focus:ring-2 focus:ring-black" placeholder="+91..." />
+              </div>
+              <div className="space-y-1">
+                <label className="flex items-center gap-2 text-sm font-bold text-gray-700"><Globe className="w-4 h-4"/> Current Location *</label>
+                <input id="location" type="text" value={formData.location} onChange={handleChange} required className="w-full border p-4 rounded-2xl outline-none focus:ring-2 focus:ring-black" placeholder="City, State" />
+              </div>
             </div>
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={applying}
-              className="w-full bg-black text-white py-3 rounded-xl font-semibold hover:bg-black/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            <div className="space-y-1">
+              <label className="flex items-center gap-2 text-sm font-bold text-gray-700"><Briefcase className="w-4 h-4"/> Skills *</label>
+              <input id="skills" type="text" value={formData.skills} onChange={handleChange} placeholder="e.g. React, Node.js, UI/UX" required className="w-full border p-4 rounded-2xl outline-none focus:ring-2 focus:ring-black" />
+            </div>
+
+            <div className="space-y-1">
+              <label className="flex items-center gap-2 text-sm font-bold text-gray-700"><Video className="w-4 h-4"/> Video Profile URL (YouTube/Loom)</label>
+              <input id="videoProfileUrl" type="url" value={formData.videoProfileUrl} onChange={handleChange} placeholder="https://..." className="w-full border p-4 rounded-2xl outline-none focus:ring-2 focus:ring-black" />
+            </div>
+
+            <div className="space-y-1">
+              <label className="flex items-center gap-2 text-sm font-bold text-gray-700"><FileText className="w-4 h-4"/> Resume (PDF Only) *</label>
+              <input id="resumeFile" type="file" accept=".pdf" onChange={handleChange} required className="w-full border-2 border-dashed p-6 rounded-2xl cursor-pointer hover:bg-gray-50 transition" />
+            </div>
+
+            <button 
+              type="submit" 
+              disabled={applying} 
+              className="w-full bg-black text-white py-5 rounded-2xl font-bold text-lg hover:bg-gray-900 transition-all disabled:opacity-50"
             >
               {applying ? "Submitting Application..." : "Submit Application"}
             </button>

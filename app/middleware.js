@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
+import { jwtVerify } from "jose";
 
-export function middleware(req) {
+export async function middleware(req) {
   const token = req.cookies.get("auth_token")?.value;
 
   if (!token) {
@@ -9,21 +9,27 @@ export function middleware(req) {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET);
+    const { payload } = await jwtVerify(token, secret);
 
-    if (
-      req.nextUrl.pathname.startsWith("/recruiter") &&
-      decoded.role !== "recruiter"
-    ) {
+    const { pathname } = req.nextUrl;
+
+    // Protection for JobSeeker routes
+    if (pathname.startsWith("/JobSeeker") && payload.role !== "candidate") {
+      return NextResponse.redirect(new URL("/login", req.url));
+    }
+
+    // Protection for Recruiter routes
+    if (pathname.startsWith("/recruiter") && payload.role !== "recruiter") {
       return NextResponse.redirect(new URL("/login", req.url));
     }
 
     return NextResponse.next();
-  } catch {
+  } catch (err) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 }
 
 export const config = {
-  matcher: ["/recruiter/:path*", "/candidate/:path*"],
+  matcher: ["/recruiter/:path*", "/JobSeeker/:path*"],
 };

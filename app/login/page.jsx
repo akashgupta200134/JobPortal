@@ -5,34 +5,39 @@ import { auth } from "../../lib/firebase";
 import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import { Button } from "../../components/ui/button";
+import { useAuth } from "@/app/context/AuthContext";
 
 export default function Login() {
+  const { login } = useAuth();
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState("phone");
   const [role, setRole] = useState("candidate");
   const [loading, setLoading] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
 
   const recaptchaRef = useRef(null);
   const confirmationRef = useRef(null);
   const router = useRouter();
 
+  // Initialize Recaptcha safely
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     if (!recaptchaRef.current) {
-      try {
-        recaptchaRef.current = new RecaptchaVerifier(
-          auth,
-          "recaptcha-container",
-          {
-            size: "invisible",
-            callback: () => console.log("Recaptcha resolved"),
-          }
-        );
-      } catch (err) {
-        console.error("Recaptcha init error:", err);
-      }
+      recaptchaRef.current = new RecaptchaVerifier(
+        auth,
+        "recaptcha-container",
+        {
+          size: "invisible",
+          callback: () => {
+            console.log("Recaptcha resolved");
+          },
+          "expired-callback": () => {
+            window.location.reload(); // Best way to reset expired recaptcha
+          },
+        }
+      );
     }
 
     return () => {
@@ -46,22 +51,23 @@ export default function Login() {
   const handleSendOtp = async (e) => {
     e.preventDefault();
     setLoading(true);
+
+    // Ensure phone starts with + (Basic E.164 check)
+    const formattedPhone = phone.startsWith("+") ? phone : `+91${phone}`;
+
     try {
       const confirmation = await signInWithPhoneNumber(
         auth,
-        phone,
+        formattedPhone,
         recaptchaRef.current
       );
       confirmationRef.current = confirmation;
       setStep("otp");
     } catch (err) {
       console.error("Send OTP Error:", err);
-      alert(err.message);
-      if (recaptchaRef.current) {
-        recaptchaRef.current
-          .render()
-          .then((widgetId) => grecaptcha.reset(widgetId));
-      }
+      alert("Error sending SMS. Please check the phone number.");
+      // Reset ReCaptcha if it fails
+      if (window.grecaptcha) window.grecaptcha.reset();
     } finally {
       setLoading(false);
     }
@@ -74,9 +80,12 @@ export default function Login() {
       return;
     }
     setLoading(true);
+
     try {
+      // 1. Firebase Confirmation
       await confirmationRef.current.confirm(otp);
 
+      // 2. Backend Login
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -86,132 +95,118 @@ export default function Login() {
 
       const data = await response.json();
 
-      if (!data.success) {
-        alert(data.message || "Login failed");
-        return;
+      if (!response.ok) {
+        // Specifically handle the 403 Role Mismatch from your backend
+        throw new Error(data.message || "Login failed");
       }
 
-      localStorage.setItem("user", JSON.stringify(data.user));
+      // 3. Update Global Context
+      login(data.user); 
 
-      if (role === "candidate") {
-        router.push("/JobSeeker/dashboard");
-      } else {
-        router.push("/recruiter/dashboard");
-      }
+      // 4. Set Success Prompt
+      setSuccessMsg(`Success! Logging you in as ${role}...`);
+
+      // 5. Explicit Redirect Logic
+      setTimeout(() => {
+        if (role === "candidate") {
+          router.push("/JobSeeker/dashboard");
+        } else {
+          router.push("/recruiter/dashboard");
+        }
+      }, 1500);
+
     } catch (err) {
       console.error("Verification Error:", err);
-      alert("Invalid OTP. Please try again.");
+      // err.message will now contain "Role mismatch" if that's what the server sent
+      alert(err.message || "Invalid OTP. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <>
-      <p className="  text-5xl font-bold text-center mt-5">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+      <h1 className="text-4xl md:text-5xl font-bold text-center mb-10 text-gray-900">
         Hello Again! Let’s Get You Started.
-      </p>
+      </h1>
 
-      <div className="min-h-screen flex items-center justify-center -mt-15 ml-10 ">
-        <div className="bg-white shadow-2xl rounded-2xl p-10 w-full max-w-md border border-gray-200">
-          <h2 className="text-3xl font-extrabold text-gray-800 mb-8 text-center tracking-wide">
-            Login with Phone
-          </h2>
+      <div className="bg-white shadow-2xl rounded-2xl p-8 w-full max-w-md border border-gray-100">
+        <div id="recaptcha-container"></div>
 
-          {step === "phone" && (
-            <form onSubmit={handleSendOtp} className="space-y-6">
-              {/* Role Selector */}
-              <div className="flex justify-between mb-6 bg-gray-100 p-3 rounded-xl">
-                <label
-                  className={`flex items-center cursor-pointer px-4 py-2 rounded-xl transition-all ${
-                    role === "candidate"
-                      ? "bg-black text-white shadow-md"
-                      : "text-gray-700 hover:bg-blue-100"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="role"
-                    value="candidate"
-                    checked={role === "candidate"}
-                    onChange={() => setRole("candidate")}
-                    className="mr-2"
-                  />
-                  Candidate
-                </label>
-                <label
-                  className={`flex items-center cursor-pointer px-4 py-2 rounded-xl transition-all ${
-                    role === "recruiter"
-                      ? "bg-white text-black shadow-md"
-                      : "text-gray-700 hover:bg-green-100"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="role"
-                    value="recruiter"
-                    checked={role === "recruiter"}
-                    onChange={() => setRole("recruiter")}
-                    className="mr-2 "
-                  />
-                  Recruiter
-                </label>
-              </div>
+        {successMsg ? (
+          <div className="text-center py-10 space-y-4">
+             <div className="text-green-500 font-bold text-2xl">✓ Success!</div>
+             <p className="text-gray-600 animate-pulse">{successMsg}</p>
+          </div>
+        ) : (
+          <>
+            <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">
+              Login with Phone
+            </h2>
 
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+91 9876543210"
-                required
-                className="w-full border border-gray-300 rounded-xl px-5 py-3 focus:outline-none focus:ring-2 transition-all placeholder-gray-400"
-              />
-              <div id="recaptcha-container"></div>
+            {step === "phone" && (
+              <form onSubmit={handleSendOtp} className="space-y-6">
+                <div className="flex bg-gray-100 p-1 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setRole("candidate")}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${role === "candidate" ? "bg-white shadow-sm text-black" : "text-gray-500"}`}
+                  >
+                    Candidate
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRole("recruiter")}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${role === "recruiter" ? "bg-white shadow-sm text-black" : "text-gray-500"}`}
+                  >
+                    Recruiter
+                  </button>
+                </div>
 
-              <Button
-                variant=""
-                type="submit"
-                disabled={loading}
-                className="w-full    text-white py-3 rounded-xl font-semibold hover:scale-105 transform transition-all shadow-lg"
-              >
-                {loading ? "Sending..." : "Send OTP"}
-              </Button>
-            </form>
-          )}
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+91 9876543210"
+                  required
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-black outline-none transition-all"
+                />
 
-          {step === "otp" && (
-            <form onSubmit={handleVerifyOtp} className="space-y-6">
-              <input
-                type="text"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                placeholder="Enter 6-digit OTP"
-                required
-                className="w-full border border-gray-300 rounded-xl px-5 py-3 focus:outline-none focus:ring-1   transition-all placeholder-gray-400"
-              />
-              <div className="flex justify-between items-center">
-                <Button
-                  variant="ghost"
-                  type="submit"
-                  disabled={loading}
-                  className="  text-black py-3 border px-6 rounded-xl font-semibold hover:scale-105 transform transition-all shadow-lg"
-                >
-                  {loading ? "Verifying..." : "Verify OTP"}
+                <Button type="submit" disabled={loading} className="w-full py-6 text-lg rounded-xl">
+                  {loading ? "Sending..." : "Send OTP"}
                 </Button>
+              </form>
+            )}
 
-                <Button
-                  variant=""
-                  type="button"
-                  onClick={() => setStep("phone")}
-                  className="text-white hover:underline font-medium ml-4"
-                >
-                  Change Number
-                </Button>
-              </div>
-            </form>
-          )}
-        </div>
+            {step === "otp" && (
+              <form onSubmit={handleVerifyOtp} className="space-y-6">
+                <p className="text-sm text-gray-500 text-center">Enter the code sent to {phone}</p>
+                <input
+                  type="text"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  placeholder="6-digit code"
+                  required
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-center text-2xl tracking-widest focus:ring-2 focus:ring-black outline-none transition-all"
+                />
+                <div className="flex gap-3">
+                  <Button type="submit" disabled={loading} className="flex-[2] py-6 rounded-xl">
+                    {loading ? "Verifying..." : "Verify OTP"}
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    type="button" 
+                    onClick={() => setStep("phone")}
+                    className="flex-1 py-6 rounded-xl"
+                  >
+                    Edit
+                  </Button>
+                </div>
+              </form>
+            )}
+          </>
+        )}
       </div>
-    </>
+    </div>
   );
 }
