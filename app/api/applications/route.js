@@ -1,50 +1,82 @@
-// app/api/applications/route.js
-import connectDB from "../../../lib/mongodb";
-import Application from "../../models/Application";
-import Job from "../../models/Job";
-import User from "../../models/User";
+import connectDB from "@/lib/mongoose";
+import Application from "@/models/Application";
+import Job from "@/models/Job";
+import User from "@/models/User";
+import jwt from "jsonwebtoken";
 import { NextResponse } from "next/server";
+import mongoose from "mongoose";
 
-// GET all applications (for recruiter)
-export async function GET(req) {
+export async function POST(req) {
   try {
-    await connectDB(); // Connect to MongoDB
+    await connectDB();
 
-    // You can filter by recruiterId later from session
-    const applications = await Application.find()
-      .populate("candidateId", "fullName email phone videoProfile idUpload skillCategory experience")
-      .populate("jobId", "title postedBy");
-
-    return NextResponse.json({ success: true, applications });
-  } catch (error) {
-    console.error(error);
-    return NextResponse.json({ success: false, message: "Server error" }, { status: 500 });
-  }
-}
-
-// PATCH to update application status (accept/reject/shortlist)
-export async function PATCH(req) {
-  try {
-    await connectDB(); // Connect to MongoDB
-    const body = await req.json();
-    const { applicationId, status } = body;
-
-    if (!applicationId || !status) {
-      return NextResponse.json({ success: false, message: "Missing fields" }, { status: 400 });
+    // 🔐 Auth
+    const token = req.cookies.get("auth_token")?.value;
+    if (!token) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
     }
 
-    // Update the application status
-    const updatedApplication = await Application.findByIdAndUpdate(
-      applicationId,
-      { status },
-      { new: true }
-    )
-      .populate("candidateId", "fullName email phone videoProfile idUpload skillCategory experience")
-      .populate("jobId", "title postedBy");
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    return NextResponse.json({ success: true, application: updatedApplication });
+    // 👤 Candidate only
+    if (decoded.role !== "candidate") {
+      return NextResponse.json(
+        { success: false, message: "Only candidates can apply" },
+        { status: 403 }
+      );
+    }
+
+    const { jobId, videoProfileUrl, idCardUrl } = await req.json();
+
+    if (!jobId || !videoProfileUrl) {
+      return NextResponse.json(
+        { success: false, message: "Missing required fields" },
+        { status: 400 }
+      );
+    }
+
+    // Ensure job exists
+    const job = await Job.findById(jobId);
+    if (!job) {
+      return NextResponse.json(
+        { success: false, message: "Job not found" },
+        { status: 404 }
+      );
+    }
+
+    // Prevent duplicate application
+    const alreadyApplied = await Application.findOne({
+      jobId,
+      candidateId: decoded.userId,
+    });
+
+    if (alreadyApplied) {
+      return NextResponse.json(
+        { success: false, message: "Already applied" },
+        { status: 409 }
+      );
+    }
+
+    // Create application
+    const application = await Application.create({
+      jobId: new mongoose.Types.ObjectId(jobId),
+      candidateId: new mongoose.Types.ObjectId(decoded.userId),
+      videoProfileUrl,
+      idCardUrl,
+    });
+
+    return NextResponse.json(
+      { success: true, application },
+      { status: 201 }
+    );
   } catch (error) {
-    console.error(error);
-    return NextResponse.json({ success: false, message: "Server error" }, { status: 500 });
+    console.error("Apply job error:", error);
+    return NextResponse.json(
+      { success: false, message: "Server error" },
+      { status: 500 }
+    );
   }
 }

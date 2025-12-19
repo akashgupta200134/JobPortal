@@ -1,3 +1,5 @@
+// app/api/auth/login/route.js
+import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import User from "@/models/User";
 
@@ -8,28 +10,52 @@ export async function POST(req) {
     const { phone, role } = await req.json();
 
     if (!phone || !role) {
-      return new Response(
-        JSON.stringify({ success: false, message: "Phone & role required" }),
+      return NextResponse.json(
+        { success: false, message: "Phone and role are required" },
         { status: 400 }
       );
     }
 
-    let user = await User.findOne({ phone });
+    // Normalize phone (recommended)
+    const normalizedPhone = phone.replace(/\D/g, "");
 
-    if (!user) {
-      user = await User.create({ phone, role });
+    let user = await User.findOne({ phone: normalizedPhone });
+
+    // User exists → role mismatch check
+    if (user && user.role !== role) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Role mismatch. Please login with correct role.",
+        },
+        { status: 403 }
+      );
     }
 
-    return new Response(
-      JSON.stringify({ success: true, user }),
+    // Create new user
+    if (!user) {
+      user = await User.create({
+        phone: normalizedPhone,
+        role,
+      });
+
+      return NextResponse.json(
+        { success: true, user, isNew: true },
+        { status: 201 }
+      );
+    }
+
+    // Existing user
+    return NextResponse.json(
+      { success: true, user, isNew: false },
       { status: 200 }
     );
   } catch (err) {
     console.error("Save user error:", err);
-    return new Response(
-      JSON.stringify({ success: false, message: "Server error" }),
+
+    return NextResponse.json(
+      { success: false, message: "Internal server error" },
       { status: 500 }
     );
   }
 }
-
