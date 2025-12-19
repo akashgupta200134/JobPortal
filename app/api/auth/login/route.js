@@ -1,18 +1,17 @@
 import { NextResponse } from "next/server";
-import dbConnect from "@/lib/mongoose";
+import connectDB from "@/lib/mongoose";
 import User from "@/models/User";
 import jwt from "jsonwebtoken";
 
 export async function POST(req) {
   try {
-    await dbConnect();
+    await connectDB();
 
     const { phone, role } = await req.json();
     const normalizedPhone = phone.replace(/\D/g, "");
 
     let user = await User.findOne({ phone: normalizedPhone });
 
-    // 🚫 Role mismatch protection
     if (user && user.role !== role) {
       return NextResponse.json(
         { success: false, message: "Role mismatch. Login with correct role." },
@@ -20,7 +19,6 @@ export async function POST(req) {
       );
     }
 
-    // Create user if new
     if (!user) {
       user = await User.create({
         phone: normalizedPhone,
@@ -28,7 +26,6 @@ export async function POST(req) {
       });
     }
 
-    // 🔐 Create JWT
     const token = jwt.sign(
       {
         userId: user._id,
@@ -38,11 +35,11 @@ export async function POST(req) {
       { expiresIn: "7d" }
     );
 
-    // 🍪 SET COOKIE (THIS WAS MISSING)
     const response = NextResponse.json({
       success: true,
       user: {
-        id: user._id,
+        _id: user._id.toString(),
+        id: user._id.toString(),
         role: user.role,
         phone: user.phone,
       },
@@ -53,7 +50,7 @@ export async function POST(req) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      maxAge: 60 * 60 * 24 * 7,
     });
 
     return response;

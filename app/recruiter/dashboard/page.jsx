@@ -9,31 +9,48 @@ export default function RecruiterDashboard() {
   const [applications, setApplications] = useState([]);
 
   useEffect(() => {
-    fetch("/api/jobs")
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) setJobs(data.jobs);
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+
+    fetch("/api/jobs", {
+      credentials: "include",
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          const myJobs = data.jobs.filter(
+            (job) =>
+              job.postedBy?._id === user._id || job.postedBy?._id === user.id
+          );
+          setJobs(myJobs);
+        }
       });
 
-    fetch("/api/applications")
-      .then(res => res.json())
-      .then(data => {
+    fetch("/api/applications", {
+      credentials: "include",
+    })
+      .then((res) => res.json())
+      .then((data) => {
         if (data.success) setApplications(data.applications);
       });
   }, []);
 
   const totalJobs = jobs.length;
-  const activeJobs = jobs.filter(job => job.status !== "closed").length;
+  const activeJobs = jobs.filter((job) => job.status !== "closed").length;
   const totalApplications = applications.length;
-  const pendingApplications = applications.filter(app => app.status === "applied").length;
+  const pendingApplications = applications.filter(
+    (app) => app.status === "applied"
+  ).length;
 
   return (
     <div className="p-8 space-y-8 bg-gray-50 min-h-screen">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Recruiter Dashboard</h1>
-          <p className="text-muted-foreground">Manage jobs and applications efficiently</p>
+          <h1 className="text-3xl font-semibold tracking-tight">
+            Recruiter Dashboard
+          </h1>
+          <p className="text-muted-foreground">
+            Manage jobs and applications efficiently
+          </p>
         </div>
         <Link
           href="/recruiter/jobs/create"
@@ -43,18 +60,32 @@ export default function RecruiterDashboard() {
         </Link>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard title="Total Jobs" value={totalJobs} icon={<Briefcase />} />
-        <StatCard title="Active Jobs" value={activeJobs} icon={<CheckCircle />} />
-        <StatCard title="Total Applications" value={totalApplications} icon={<Users />} />
-        <StatCard title="Pending Reviews" value={pendingApplications} icon={<Clock />} />
+        <StatCard
+          title="Active Jobs"
+          value={activeJobs}
+          icon={<CheckCircle />}
+        />
+        <StatCard
+          title="Total Applications"
+          value={totalApplications}
+          icon={<Users />}
+        />
+        <StatCard
+          title="Pending Reviews"
+          value={pendingApplications}
+          icon={<Clock />}
+        />
       </div>
 
-      {/* Actions */}
       <div className="flex gap-4">
         <DashboardButton href="/recruiter/jobs/manage" label="Manage Jobs" />
-        <DashboardButton href="/recruiter/applications" label="View Applications" variant="outline" />
+        <DashboardButton
+          href="/recruiter/applications"
+          label="View Applications"
+          variant="outline"
+        />
       </div>
     </div>
   );

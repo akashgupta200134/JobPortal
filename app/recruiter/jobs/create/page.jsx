@@ -11,19 +11,17 @@ export default function CreateJobPage() {
   const [location, setLocation] = useState("");
   const [salaryRange, setSalaryRange] = useState("");
   const [loading, setLoading] = useState(false);
-
-  // Assume recruiter info is stored in localStorage after login
   const [recruiterId, setRecruiterId] = useState(null);
 
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("user")); // from login
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
     if (user && user.role === "recruiter") {
-      setRecruiterId(user._id);
+      setRecruiterId(user._id || user.id);
     } else {
       alert("You must be logged in as a recruiter!");
       router.push("/login");
     }
-  }, []);
+  }, [router]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -33,10 +31,11 @@ export default function CreateJobPage() {
     const res = await fetch("/api/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({
         title,
         description,
-        skills: skills.split(",").map((s) => s.trim()), // comma-separated
+        skills,
         location,
         salaryRange,
         postedBy: recruiterId,
