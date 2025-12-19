@@ -86,8 +86,8 @@ export async function POST(req) {
         role: user.role,
         phone: user.phone,
         email: user.email || user.companyEmail,
-        fullName: user.fullName,
-        companyName: user.companyName,
+        fullName: user.role === "candidate" ? user.fullName : user.recruiterName,
+        email: user.email || user.companyEmail,
       },
     });
 

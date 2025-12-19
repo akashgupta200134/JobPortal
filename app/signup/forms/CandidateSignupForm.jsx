@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/app/context/AuthContext"; // Import useAuth hook
 import {
   Field,
   FieldDescription,
@@ -15,7 +16,9 @@ import { Input } from "@/components/ui/input";
 
 export function CandidateSignupForm({ className, ...props }) {
   const router = useRouter();
+  const { login } = useAuth(); // Initialize login function from Context
   const [loading, setLoading] = useState(false);
+  
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -46,8 +49,6 @@ export function CandidateSignupForm({ className, ...props }) {
       expectedSalary: parseInt(formData.expectedSalary) || 0,
     };
 
-    console.log("Submitting signup data:", submitData);
-
     try {
       const response = await fetch("/api/auth/signup", {
         method: "POST",
@@ -57,15 +58,16 @@ export function CandidateSignupForm({ className, ...props }) {
       });
 
       const data = await response.json();
-      console.log("Signup response:", data);
 
       if (data.success) {
-        localStorage.setItem("user", JSON.stringify(data.user));
+        // SUCCESS: Use the login function from context.
+        // This updates the global state and fixes the Navbar name issue.
+        login(data.user); 
+        
         alert("Account created successfully!");
         router.push("/JobSeeker/dashboard");
       } else {
         alert(data.message || "Signup failed");
-        console.error("Signup failed:", data);
       }
     } catch (error) {
       console.error("Signup error:", error);
@@ -112,8 +114,7 @@ export function CandidateSignupForm({ className, ...props }) {
             required
           />
           <FieldDescription>
-            We'll use this to contact you. We will not share your email with
-            anyone else.
+            We'll use this to contact you.
           </FieldDescription>
         </Field>
 
@@ -127,10 +128,6 @@ export function CandidateSignupForm({ className, ...props }) {
             onChange={handleChange}
             required
           />
-          <FieldDescription>
-            You'll receive an OTP on this number. We will not share your number
-            with anyone else.
-          </FieldDescription>
         </Field>
 
         <Field>
@@ -148,7 +145,7 @@ export function CandidateSignupForm({ className, ...props }) {
           <FieldLabel htmlFor="gender">Gender</FieldLabel>
           <select
             id="gender"
-            className="border rounded-md p-2 w-full"
+            className="border rounded-md p-2 w-full bg-white"
             value={formData.gender}
             onChange={handleChange}
             required
@@ -164,7 +161,7 @@ export function CandidateSignupForm({ className, ...props }) {
           <FieldLabel htmlFor="skillCategory">Skill Category</FieldLabel>
           <select
             id="skillCategory"
-            className="border rounded-md p-2 w-full"
+            className="border rounded-md p-2 w-full bg-white"
             value={formData.skillCategory}
             onChange={handleChange}
             required
@@ -181,7 +178,7 @@ export function CandidateSignupForm({ className, ...props }) {
           <FieldLabel htmlFor="experience">Experience (Years)</FieldLabel>
           <select
             id="experience"
-            className="border rounded-md p-2 w-full"
+            className="border rounded-md p-2 w-full bg-white"
             value={formData.experience}
             onChange={handleChange}
             required
@@ -206,9 +203,7 @@ export function CandidateSignupForm({ className, ...props }) {
         </Field>
 
         <Field>
-          <FieldLabel htmlFor="videoProfile">
-            Introduction Video (URL)
-          </FieldLabel>
+          <FieldLabel htmlFor="videoProfile">Introduction Video (URL)</FieldLabel>
           <Input
             id="videoProfile"
             type="url"
@@ -216,9 +211,6 @@ export function CandidateSignupForm({ className, ...props }) {
             value={formData.videoProfile}
             onChange={handleChange}
           />
-          <FieldDescription>
-            Provide a URL to your 30–60 sec self-introduction video.
-          </FieldDescription>
         </Field>
 
         <Field>
@@ -232,19 +224,18 @@ export function CandidateSignupForm({ className, ...props }) {
           />
         </Field>
 
-        <Field>
-          <Button type="submit" disabled={loading}>
-            {loading ? "Creating Account..." : "Create Account"}
-          </Button>
-        </Field>
+        <Button type="submit" className="w-full" disabled={loading}>
+          {loading ? "Creating Account..." : "Create Account"}
+        </Button>
 
         <FieldSeparator>Or continue with</FieldSeparator>
 
-        <Field>
-          <FieldDescription className="px-6 text-center">
-            Already have an account? <a href="/login">Sign in</a>
-          </FieldDescription>
-        </Field>
+        <div className="text-center text-sm">
+          Already have an account?{" "}
+          <a href="/login" className="underline underline-offset-4 hover:text-primary">
+            Sign in
+          </a>
+        </div>
       </FieldGroup>
     </form>
   );

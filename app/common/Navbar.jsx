@@ -32,10 +32,10 @@ export default function Navbar() {
           {user && !isAuthPage ? (
             <div className="flex items-center gap-6">
               <div className="flex flex-col items-end">
-                <span className="text-sm font-bold text-zinc-900 leading-tight">
-                  {user.fullName}
-                </span>
-                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600 capitalize">
+    <span className="text-sm font-bold text-zinc-900 leading-tight">
+  {user?.name || user?.fullName || user?.recruiterName || "User"}
+</span>
+                <span className="text-[11px] mt-1 font-medium px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600 capitalize">
                   {user.role}
                 </span>
               </div>

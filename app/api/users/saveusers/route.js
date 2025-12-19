@@ -43,7 +43,7 @@ export async function POST(req) {
           id: user._id.toString(),
           role: user.role,
           phone: user.phone,
-          name: displayName, // Send this simplified name field
+          name: fullName, // Send this simplified name field
         },
         isNew: !user.fullName && !user.recruiterName 
       },
