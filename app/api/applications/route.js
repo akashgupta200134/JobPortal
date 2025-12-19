@@ -1,125 +1,75 @@
 import connectDB from "@/lib/mongoose";
 import Application from "@/models/Application";
-import Job from "@/models/Job";
-import User from "@/models/User";
+import Job from "@/models/Job"; 
 import jwt from "jsonwebtoken";
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
+import fs from "fs";
 
-export async function GET(req) {
+export const dynamic = 'force-dynamic';
+
+// GET: For the Recruiter Table
+export async function GET() {
   try {
     await connectDB();
-
-    const token = req.cookies.get("auth_token")?.value;
-    if (!token) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    let applications;
-
-    if (decoded.role === "candidate") {
-      applications = await Application.find({ candidateId: decoded.userId })
-        .populate("jobId", "title description location salaryRange postedBy")
-        .populate({
-          path: "jobId",
-          populate: { path: "postedBy", select: "companyName recruiterName" },
-        })
-        .sort({ createdAt: -1 });
-    } else if (decoded.role === "recruiter") {
-      const recruiterJobs = await Job.find({ postedBy: decoded.userId }).select(
-        "_id"
-      );
-      const jobIds = recruiterJobs.map((job) => job._id);
-
-      applications = await Application.find({ jobId: { $in: jobIds } })
-        .populate("jobId", "title description location salaryRange")
-        .populate("candidateId", "name email phone")
-        .sort({ createdAt: -1 });
-    } else {
-      return NextResponse.json(
-        { success: false, message: "Invalid role" },
-        { status: 403 }
-      );
-    }
-
+    const applications = await Application.find({})
+      .populate("jobId", "title") 
+      .sort({ createdAt: -1 });
     return NextResponse.json({ success: true, applications });
-  } catch (error) {
-    console.error("GET applications error:", error);
-    return NextResponse.json(
-      { success: false, message: "Server error" },
-      { status: 500 }
-    );
+  } catch (err) {
+    return NextResponse.json({ success: false }, { status: 500 });
   }
 }
 
+// POST: For the Candidate applying
 export async function POST(req) {
   try {
     await connectDB();
 
     const token = req.cookies.get("auth_token")?.value;
-    if (!token) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    if (!token) return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    if (decoded.role !== "candidate") {
-      return NextResponse.json(
-        { success: false, message: "Only candidates can apply" },
-        { status: 403 }
-      );
-    }
+    const formData = await req.formData();
+    const jobId = formData.get("jobId");
 
-    const { jobId, videoProfileUrl, idCardUrl } = await req.json();
-
-    if (!jobId || !videoProfileUrl) {
-      return NextResponse.json(
-        { success: false, message: "Missing required fields" },
-        { status: 400 }
-      );
-    }
-
-    const job = await Job.findById(jobId);
-    if (!job) {
-      return NextResponse.json(
-        { success: false, message: "Job not found" },
-        { status: 404 }
-      );
-    }
-
-    const alreadyApplied = await Application.findOne({
-      jobId,
-      candidateId: decoded.userId,
+    // Check if already applied
+    const alreadyApplied = await Application.findOne({ 
+      jobId: new mongoose.Types.ObjectId(jobId), 
+      candidateId: decoded.userId 
     });
+    
+    if (alreadyApplied) return NextResponse.json({ success: false, message: "Already applied" }, { status: 409 });
 
-    if (alreadyApplied) {
-      return NextResponse.json(
-        { success: false, message: "Already applied" },
-        { status: 409 }
-      );
+    // Handle File Upload
+    const resumeFile = formData.get("resumeFile");
+    let resumeUrl = "";
+    if (resumeFile && typeof resumeFile !== 'string' && resumeFile.size > 0) {
+      const uploadDir = "./public/uploads";
+      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+      const fileName = `${Date.now()}-${resumeFile.name}`;
+      const filePath = `${uploadDir}/${fileName}`;
+      fs.writeFileSync(filePath, Buffer.from(await resumeFile.arrayBuffer()));
+      resumeUrl = `/uploads/${fileName}`;
     }
 
+    // Create Application with all fields from your Schema
     const application = await Application.create({
       jobId: new mongoose.Types.ObjectId(jobId),
       candidateId: new mongoose.Types.ObjectId(decoded.userId),
-      videoProfileUrl,
-      idCardUrl,
+      fullName: formData.get("fullName"),
+      email: formData.get("email"),
+      phoneNumber: formData.get("phoneNumber"),
+      location: formData.get("location"),
+      skills: formData.get("skills"),
+      videoProfileUrl: formData.get("videoProfileUrl"),
+      resumeUrl: resumeUrl,
     });
 
     return NextResponse.json({ success: true, application }, { status: 201 });
-  } catch (error) {
-    console.error("Apply job error:", error);
-    return NextResponse.json(
-      { success: false, message: "Server error" },
-      { status: 500 }
-    );
+  } catch (err) {
+    console.error("POST Error:", err);
+    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }

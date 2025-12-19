@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Briefcase, MapPin, DollarSign } from "lucide-react";
+import { ArrowLeft, MapPin, DollarSign } from "lucide-react";
 
 export default function ApplyJobPage() {
   const router = useRouter();
@@ -13,10 +13,16 @@ export default function ApplyJobPage() {
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
   const [formData, setFormData] = useState({
+    fullName: "",
+    email: "",
+    phoneNumber: "",
+    location: "",
+    skills: "",
     videoProfileUrl: "",
-    idCardUrl: "",
+    resumeFile: null,
   });
 
+  // Check candidate login and fetch job details
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("user") || "{}");
     if (!user || user.role !== "candidate") {
@@ -29,32 +35,33 @@ export default function ApplyJobPage() {
 
   const fetchJobDetails = async () => {
     try {
-      const res = await fetch("/api/jobs", {
-        credentials: "include",
-      });
+      const res = await fetch("/api/jobs", { credentials: "include" });
       const data = await res.json();
       if (data.success) {
         const foundJob = data.jobs.find((j) => j._id === jobId);
-        if (foundJob) {
-          setJob(foundJob);
-        } else {
+        if (foundJob) setJob(foundJob);
+        else {
           alert("Job not found");
           router.push("/JobSeeker/dashboard");
         }
+      } else {
+        alert("Failed to load jobs");
       }
-    } catch (error) {
-      console.error("Error fetching job:", error);
-      alert("Failed to load job details");
+    } catch (err) {
+      console.error(err);
+      alert("Error fetching job details");
     } finally {
       setLoading(false);
     }
   };
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.id]: e.target.value,
-    });
+    const { id, value, files } = e.target;
+    if (files) {
+      setFormData({ ...formData, [id]: files[0] });
+    } else {
+      setFormData({ ...formData, [id]: value });
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -62,15 +69,16 @@ export default function ApplyJobPage() {
     setApplying(true);
 
     try {
+      const formPayload = new FormData();
+      formPayload.append("jobId", jobId);
+      Object.keys(formData).forEach((key) => {
+        if (formData[key]) formPayload.append(key, formData[key]);
+      });
+
       const response = await fetch("/api/applications", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        body: formPayload,
         credentials: "include",
-        body: JSON.stringify({
-          jobId,
-          videoProfileUrl: formData.videoProfileUrl,
-          idCardUrl: formData.idCardUrl,
-        }),
       });
 
       const data = await response.json();
@@ -81,8 +89,8 @@ export default function ApplyJobPage() {
       } else {
         alert(data.message || "Failed to apply");
       }
-    } catch (error) {
-      console.error("Apply error:", error);
+    } catch (err) {
+      console.error("Apply error:", err);
       alert("An error occurred. Please try again.");
     } finally {
       setApplying(false);
@@ -100,9 +108,7 @@ export default function ApplyJobPage() {
     );
   }
 
-  if (!job) {
-    return null;
-  }
+  if (!job) return null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -115,19 +121,15 @@ export default function ApplyJobPage() {
           Back to Jobs
         </button>
 
+        {/* Job Details */}
         <div className="bg-white rounded-2xl border shadow-sm p-8 mb-6">
           <div className="flex items-start gap-4 mb-6">
             <div className="w-16 h-16 bg-black rounded-xl flex items-center justify-center text-white font-bold text-2xl">
               {job.postedBy?.companyName?.[0]?.toUpperCase() || "C"}
             </div>
             <div className="flex-1">
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                {job.title}
-              </h1>
-              <p className="text-xl text-gray-600 mb-4">
-                {job.postedBy?.companyName || "Company"}
-              </p>
-
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">{job.title}</h1>
+              <p className="text-xl text-gray-600 mb-4">{job.postedBy?.companyName || "Company"}</p>
               <div className="flex flex-wrap gap-4 text-sm text-gray-600">
                 {job.location && (
                   <div className="flex items-center gap-1">
@@ -145,12 +147,14 @@ export default function ApplyJobPage() {
             </div>
           </div>
 
-          <div className="border-t pt-6 mb-6">
-            <h2 className="text-xl font-semibold mb-3">Job Description</h2>
-            <p className="text-gray-700 whitespace-pre-wrap">{job.description}</p>
-          </div>
+          {job.description && (
+            <div className="border-t pt-6 mb-6">
+              <h2 className="text-xl font-semibold mb-3">Job Description</h2>
+              <p className="text-gray-700 whitespace-pre-wrap">{job.description}</p>
+            </div>
+          )}
 
-          {job.skills && job.skills.length > 0 && (
+          {job.skills?.length > 0 && (
             <div className="border-t pt-6">
               <h2 className="text-xl font-semibold mb-3">Required Skills</h2>
               <div className="flex flex-wrap gap-2">
@@ -167,50 +171,50 @@ export default function ApplyJobPage() {
           )}
         </div>
 
+        {/* Apply Form */}
         <div className="bg-white rounded-2xl border shadow-sm p-8">
           <h2 className="text-2xl font-bold mb-6">Apply for this Position</h2>
           <form onSubmit={handleSubmit} className="space-y-6">
+            {[
+              { id: "fullName", label: "Full Name", type: "text", placeholder: "Akash Gupta" },
+              { id: "email", label: "Email", type: "email", placeholder: "akash@gmail.com" },
+              { id: "phoneNumber", label: "Phone Number", type: "tel", placeholder: "+919876543210" },
+              { id: "location", label: "Location", type: "text", placeholder: "Mumbai" },
+              { id: "skills", label: "Skills", type: "text", placeholder: "Reactjs, Nextjs" },
+              { id: "videoProfileUrl", label: "Video Profile URL", type: "url", placeholder: "https://example.com/video.mp4" },
+            ].map((field) => (
+              <div key={field.id}>
+                <label htmlFor={field.id} className="block text-sm font-medium text-gray-700 mb-2">
+                  {field.label} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id={field.id}
+                  type={field.type}
+                  placeholder={field.placeholder}
+                  value={formData[field.id]}
+                  onChange={handleChange}
+                  className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black transition"
+                  required
+                />
+              </div>
+            ))}
+
+            {/* Resume Upload */}
             <div>
-              <label
-                htmlFor="videoProfileUrl"
-                className="block text-sm font-medium text-gray-700 mb-2"
-              >
-                Video Profile URL <span className="text-red-500">*</span>
+              <label htmlFor="resumeFile" className="block text-sm font-medium text-gray-700 mb-2">
+                Resume <span className="text-red-500">*</span>
               </label>
               <input
-                id="videoProfileUrl"
-                type="url"
-                placeholder="https://example.com/your-video.mp4"
-                value={formData.videoProfileUrl}
+                id="resumeFile"
+                type="file"
+                accept=".pdf,.doc,.docx"
                 onChange={handleChange}
                 className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black transition"
                 required
               />
-              <p className="text-sm text-gray-500 mt-1">
-                Provide a link to your introduction video
-              </p>
             </div>
 
-            <div>
-              <label
-                htmlFor="idCardUrl"
-                className="block text-sm font-medium text-gray-700 mb-2"
-              >
-                ID Card/Proof URL (Optional)
-              </label>
-              <input
-                id="idCardUrl"
-                type="url"
-                placeholder="https://example.com/your-id.pdf"
-                value={formData.idCardUrl}
-                onChange={handleChange}
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black transition"
-              />
-              <p className="text-sm text-gray-500 mt-1">
-                Provide a link to your ID proof document
-              </p>
-            </div>
-
+            {/* Submit Button */}
             <button
               type="submit"
               disabled={applying}
@@ -224,4 +228,3 @@ export default function ApplyJobPage() {
     </div>
   );
 }
-
